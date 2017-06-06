@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>com.gstar</groupId>
-	<artifactId>spring rest data and react</artifactId>
+	<artifactId>spring-rest-data-and-react</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<packaging>war</packaging>
 
