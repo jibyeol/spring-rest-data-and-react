@@ -13,9 +13,9 @@ class App extends React.Component {
 		this.state = {employees : []};
 	}
 	
-	componentDivMount() {
+	componentDidMount() {
 		client({method : 'GET', path : '/api/employees'}).done(response => {
-			this.setState({employees : response.entiry._embedded.employees});
+			this.setState({employees : response.entity._embedded.employees});
 		});
 	}
 	
@@ -56,7 +56,7 @@ class Employee extends React.Component {
 				<tr>
 					<td>{this.props.employee.firstName}</td>
 					<td>{this.props.employee.lastName}</td>
-					<td>{this.props.employee.descriptions}</td>
+					<td>{this.props.employee.description}</td>
 				</tr>
 		)
 	}
@@ -65,5 +65,5 @@ class Employee extends React.Component {
 
 ReactDOM.render(
 		<App />,
-		document.getElementsById('react')
+		document.getElementById('react')
 )
