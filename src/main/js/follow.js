@@ -25,8 +25,8 @@ module.exports = function follow(api, rootPath, relArray){
 			
 			if(typeof arrayItem === 'string'){
 				return api({
-					method : 'GET'.
-					path : response.entity._link[rel].href
+					method : 'GET',
+					path : response.entity._links[rel].href
 				});
 			} else {
 				return api({
