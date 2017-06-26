@@ -4,6 +4,7 @@
 
 const React = require('react');
 const ReactDOM = require('react-dom');
+const when = require('when');
 const client = require('./client');
 const follow = require('./follow');
 
@@ -42,22 +43,37 @@ class App extends React.Component {
 	loadFromServer(pageSize){
 		follow(client, root, [
 			{rel : 'employees', params : {size : pageSize}}
-		]).then(employeeCollection => {
+		]).then(employeeCollection => { // JSON 스키마 데이터를 가져오기 위한 호출
 			return client({
 				method : 'GET',
 				path : employeeCollection.entity._links.profile.href,
 				headers : {'Accept' : 'application/schema+json'}
-			}).then(schema => {
+			}).then(schema => { // <App /> 구성 요소에 메타 데이터 및 탐색 링크를 저장
 				this.schema = schema.entity;
-				return employeeCollection;
+				this.links = employeeCollection.entity._links;
+				this.curPage = employeeCollection.entity.page.number + 1
+				return employeeCollection; // 다음 then() 호출로 전달됨. (이렇게 메타데이터 전달)
 			});
-		}).done(employeeCollection => {
+		}).then(employeeCollection => { 
+			// employeeCollection을 각 개별 리소스를 가져오는 GET promises 배열로 변환. 
+			// 각 직원에 대해 ETag 헤더를 가져오는 데 필요한 것.
+			return employeeCollection.entity._embedded.employees.map(employee => 
+				client({
+					method : 'GET',
+					path : employee._links.self.href
+				})
+			);
+		}).then(employeePromises => {
+			// GET promises의 배열을 갖고 모든 GET promises이 해결될 때,
+			// `when.all()`을 사용하여 singlepromise를 병합한다. 
+			return when.all(employeePromises);
+		}).done(employees => {
 			this.setState({
-				employees : employeeCollection.entity._embedded.employees,
+				employees : employees,
 				attributes : Object.keys(this.schema.properties),
 				pageSize : pageSize,
-				links : employeeCollection.entity._links,
-				curPage : employeeCollection.entity.page.number + 1
+				links : this.links,
+				curPage : this.curPage
 			});
 		});
 	}
@@ -84,19 +100,34 @@ class App extends React.Component {
 	}
 	
 	onNavigate(navUri) {
-		client({method:'GET', path:navUri}).done(employeeCollection => {
+		client({
+			method:'GET', 
+			path:navUri
+		}).then(employeeCollection => {
+			this.links = employeeCollection.entity._links;
+			this.curPage = employeeCollection.entity.page.number + 1;
+			
+			return employeeCollection.entity._embedded.employees.map(employee => 
+				client({
+					method : 'GET',
+					path : employee._links.self.href
+				})
+			);
+		}).then(employeePromises => {
+			return when.all(employeePromises);
+		}).done(employees => {
 			this.setState({
-				employees : employeeCollection.entity._embedded.employees,
-				attributes : this.state.attributes,
+				employees : employees,
+				attributes : this.state.attributes, // employeeCollection.entity.page.number + 1
 				pageSize : this.state.pageSize,
-				links : employeeCollection.entity._links,
-				curPage : employeeCollection.entity.page.number + 1
+				links : this.links,
+				curPage : this.curPage
 			});
 		});
 	}
 	
 	onDelete(employee) {
-		client({method:'DELETE', path:employee._links.self.href}).done(response => {
+		client({method:'DELETE', path:employee.entity._links.self.href}).done(response => {
 			this.loadFromServer(this.state.pageSize);
 		});
 	}
@@ -122,7 +153,7 @@ class EmployeeList extends React.Component {
 	
 	render() {
 		var employees = this.props.employees.map(employee =>
-			<Employee key={employee._links.self.href} employee={employee} onDelete={this.props.onDelete}/>
+			<Employee key={employee.entity._links.self.href} employee={employee} onDelete={this.props.onDelete}/>
 		);
 		
 		var navLinks = [];
@@ -206,9 +237,9 @@ class Employee extends React.Component {
 	render() {
 		return (
 				<tr>
-					<td>{this.props.employee.firstName}</td>
-					<td>{this.props.employee.lastName}</td>
-					<td>{this.props.employee.description}</td>
+					<td>{this.props.employee.entity.firstName}</td>
+					<td>{this.props.employee.entity.lastName}</td>
+					<td>{this.props.employee.entity.description}</td>
 					<td>
 						<button onClick={this.handleDelete}>Delete</button>
 					</td>
@@ -265,6 +296,53 @@ class CreateDialog extends React.Component {
 				</div>
 		);
 	}
+}
+
+class UpdateDialog extends React.Component {
+	
+	constructor(props) {
+		super(props);
+		this.handleSubmit = this.handleSubmit.bind(this);
+	}
+	
+	handleSubmit(e) {
+		e.preventDefault();
+		var updateEmployee = {};
+		this.props.attributes.forEach(attribute => {
+			updatedEmployee[attribute] = ReactDOM.findDOMNode(this.refs[attribute]).value.trim();
+		});
+		this.props.onUpdate(this.props.employee, updatedEmployee);
+		window.location = "#";
+	}
+	
+	render() {
+		var inputs = this.props.attributes.map(attribute =>
+				<p key={this.employee.entity[attribute]}>
+					<input type="text"placeholder={attribute}
+						defaultValue={this.props.employee.entity[attribute]}
+						ref={attribute} className="field" />
+				</p>
+		);
+		
+		var dialogId = "updateEmployee-" + this.props.employee.entity._links.self.href;
+		
+		return (
+				<div key={this.props.employee.entity._links.self.href}>
+					<a href={"#" + dialogId}>Update</a>
+					<div id={dialogId} className="modalDialog">
+						<div>
+							<a href="#" title="Close" className="close">X</a>
+							<h2>Update an employee</h2>
+							<form>
+								{inputs}
+								<button onClick={this.handleSubmit}>Update</button>
+							</form>
+						</div>
+					</div>
+				</div>
+		);
+	}
+	
 }
 
 ReactDOM.render(
